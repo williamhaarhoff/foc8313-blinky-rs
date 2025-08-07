@@ -1,0 +1,9 @@
+[target.thumbv7m-none-eabi]
+runner = "probe-rs run --chip STM32F103CB"
+rustflags = [
+  "-C", "link-arg=-Tlink.x"
+  #"-C", "link-arg=-Tmemory.x"
+]
+
+[build]
+target = "thumbv7m-none-eabi"
