@@ -8,7 +8,7 @@ use defmt_rtt as _; // <- RTT logging
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 // use embassy_stm32::time::Hertz;
-use embassy_stm32::Peripherals;
+// use embassy_stm32::Peripherals;
 use embassy_time::{Duration, Timer};
 use panic_probe as _;
 
