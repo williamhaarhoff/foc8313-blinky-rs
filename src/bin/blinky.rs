@@ -4,7 +4,7 @@
 
 use defmt::*;
 use defmt_rtt as _; // <- RTT logging
-// use defmt_panic as _;
+                    // use defmt_panic as _;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 // use embassy_stm32::time::Hertz;
