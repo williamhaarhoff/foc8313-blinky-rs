@@ -12,12 +12,13 @@
       let
         pkgs = import nixpkgs {
           inherit system;
+          config = {allowUnfree = true;};
         };
 
         # Rust toolchain with target support
         rustToolchain = fenix.packages.${system}.fromToolchainFile {
           file = ./rust-toolchain.toml;
-          sha256 = "sha256-Qxt8XAuaUR2OMdKbN4u8dBJOhSHxS+uS06Wl9+flVEk=";
+          sha256 = "sha256-+9FmLhAOezBZCOziO0Qct1NOrfpjNsXxc/8I0c7BdKE=";
         };
 
         # Tools for embedded dev
@@ -32,6 +33,7 @@
           cargo-binutils
           dfu-util
           gcc-arm-embedded
+          stm32cubemx
           (pkgs.python3.withPackages (ps: with ps; [ pyocd ]))
         ];
       in {
