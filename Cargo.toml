@@ -11,6 +11,7 @@ static_cell = "2"
 embassy-stm32 = { version = "0.3.0", features = ["defmt", "rt", "stm32f103cb", "time-driver-any", "exti", "unstable-pac", "memory-x"] }
 embassy-executor = { version = "0.8.0", features = ["arch-cortex-m", "executor-thread", "defmt"] }
 embassy-time = { version = "0.4.0", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }
+embedded-hal = { version = "1.0.0"}
 #embassy-time-driver = { version = "0.1.0" }
 heapless = { version = "0.8", default-features = false }
 defmt = "1.0.1"
