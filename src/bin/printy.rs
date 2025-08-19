@@ -8,7 +8,7 @@ use defmt_rtt as _; // <- RTT logging
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::time::Hertz;
-use embassy_stm32::usart::Uart;
+use embassy_stm32::usart::{Config as UartConfig, Uart};
 use embassy_time::{Duration, Timer};
 use panic_probe as _;
 
@@ -41,13 +41,19 @@ async fn main(_spawner: Spawner) {
     }
     let p = embassy_stm32::init(config);
     let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
+    let mut usart = Uart::new_blocking(p.USART1, p.PB7, p.PB6, UartConfig::default()).unwrap();
+    embassy_stm32::pac::AFIO
+        .mapr()
+        .modify(|w| w.set_usart1_remap(true));
 
     loop {
         info!("🔆 LED on");
+        unwrap!(usart.blocking_write(b"LED on\n"));
         led.set_high();
         Timer::after(Duration::from_millis(500)).await;
 
         info!("🌑 LED off");
+        unwrap!(usart.blocking_write(b"LED off\n"));
         led.set_low();
         Timer::after(Duration::from_millis(500)).await;
     }
