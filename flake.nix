@@ -37,6 +37,7 @@
         probe-rs
         cargo-binutils
         dfu-util
+        can-utils
         gcc-arm-embedded
         stm32cubemx
         (pkgs.python3.withPackages (ps: with ps; [pyocd]))

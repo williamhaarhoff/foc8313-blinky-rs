@@ -15,3 +15,6 @@ erase-brute-force:
 
 serial:
     picocom /dev/ttyUSB0 --imap lfcrlf
+
+can_monitor:
+    sudo ip link set down can0 && sudo ip link set up can0 type can bitrate 1000000 && candump can0
