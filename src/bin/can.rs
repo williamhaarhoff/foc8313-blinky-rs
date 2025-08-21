@@ -3,6 +3,7 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_stm32::bind_interrupts;
 use embassy_stm32::can::frame::Envelope;
 use embassy_stm32::can::{
     filter, Can, Fifo, Frame, Id, Rx0InterruptHandler, Rx1InterruptHandler, SceInterruptHandler,
@@ -10,7 +11,6 @@ use embassy_stm32::can::{
 };
 use embassy_stm32::peripherals::CAN;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::{bind_interrupts, Config};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -65,8 +65,7 @@ async fn main(_spawner: Spawner) {
         config.rcc.apb2_pre = APBPrescaler::DIV1;
         config.rcc.adc_pre = ADCPrescaler::DIV6;
     }
-
-    let p = embassy_stm32::init(Config::default());
+    let p = embassy_stm32::init(config);
 
     // Set alternate pin mapping to B8/B9
     embassy_stm32::pac::AFIO
