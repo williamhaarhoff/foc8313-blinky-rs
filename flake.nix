@@ -39,7 +39,7 @@
         dfu-util
         can-utils
         gcc-arm-embedded
-        stm32cubemx
+        #stm32cubemx
         (pkgs.python3.withPackages (ps: with ps; [pyocd]))
       ];
     in {
