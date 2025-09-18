@@ -7,17 +7,14 @@ use defmt_rtt as _; // <- RTT logging
                     // use defmt_panic as _;
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    gpio::{AfType, Flex, Level, Output, OutputType, Speed},
+    gpio::{Level, Output, OutputType, Speed},
     time::{khz, Hertz},
     timer::{
         low_level::CountingMode,
         simple_pwm::{PwmPin, SimplePwm},
-        Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerPin,
     },
 };
 use embassy_time::{Duration, Timer};
-use embedded_hal::digital::OutputPin;
-use micromath::F32Ext;
 use panic_probe as _;
 
 #[defmt::panic_handler]
@@ -58,7 +55,7 @@ async fn main(_spawner: Spawner) {
         Some(ch2_pin),
         Some(ch3_pin),
         None,
-        khz(1),
+        khz(16),
         CountingMode::CenterAlignedUpInterrupts,
     );
     pwm_driver.ch1().enable();
@@ -69,41 +66,43 @@ async fn main(_spawner: Spawner) {
     enable_pin.set_high();
 
     let delay: u64 = 100;
+    let duty: u16 = pwm_driver.max_duty_cycle() / 32;
+
     loop {
         led.toggle();
-        pwm_driver.ch1().set_duty_cycle_fully_on();
+        pwm_driver.ch1().set_duty_cycle(duty);
         pwm_driver.ch2().set_duty_cycle_fully_off();
         pwm_driver.ch3().set_duty_cycle_fully_off();
         Timer::after(Duration::from_millis(delay)).await;
 
         led.toggle();
-        pwm_driver.ch1().set_duty_cycle_fully_on();
-        pwm_driver.ch2().set_duty_cycle_fully_on();
+        pwm_driver.ch1().set_duty_cycle(duty);
+        pwm_driver.ch2().set_duty_cycle(duty);
         pwm_driver.ch3().set_duty_cycle_fully_off();
         Timer::after(Duration::from_millis(delay)).await;
 
-        led.toggle();
-        pwm_driver.ch1().set_duty_cycle_fully_off();
-        pwm_driver.ch2().set_duty_cycle_fully_on();
-        pwm_driver.ch3().set_duty_cycle_fully_off();
-        Timer::after(Duration::from_millis(delay)).await;
+        //led.toggle();
+        //pwm_driver.ch1().set_duty_cycle_fully_off();
+        //pwm_driver.ch2().set_duty_cycle(duty);
+        //pwm_driver.ch3().set_duty_cycle_fully_off();
+        //Timer::after(Duration::from_millis(delay)).await;
 
-        led.toggle();
-        pwm_driver.ch1().set_duty_cycle_fully_off();
-        pwm_driver.ch2().set_duty_cycle_fully_on();
-        pwm_driver.ch3().set_duty_cycle_fully_on();
-        Timer::after(Duration::from_millis(delay)).await;
+        //led.toggle();
+        //pwm_driver.ch1().set_duty_cycle_fully_off();
+        //pwm_driver.ch2().set_duty_cycle(duty);
+        //pwm_driver.ch3().set_duty_cycle(duty);
+        //Timer::after(Duration::from_millis(delay)).await;
 
-        led.toggle();
-        pwm_driver.ch1().set_duty_cycle_fully_off();
-        pwm_driver.ch2().set_duty_cycle_fully_off();
-        pwm_driver.ch3().set_duty_cycle_fully_on();
-        Timer::after(Duration::from_millis(delay)).await;
+        //led.toggle();
+        //pwm_driver.ch1().set_duty_cycle_fully_off();
+        //pwm_driver.ch2().set_duty_cycle_fully_off();
+        //pwm_driver.ch3().set_duty_cycle(duty);
+        //Timer::after(Duration::from_millis(delay)).await;
 
-        led.toggle();
-        pwm_driver.ch1().set_duty_cycle_fully_on();
-        pwm_driver.ch2().set_duty_cycle_fully_off();
-        pwm_driver.ch3().set_duty_cycle_fully_on();
-        Timer::after(Duration::from_millis(delay)).await;
+        //led.toggle();
+        //pwm_driver.ch1().set_duty_cycle(duty);
+        //pwm_driver.ch2().set_duty_cycle_fully_off();
+        //pwm_driver.ch3().set_duty_cycle(duty);
+        //Timer::after(Duration::from_millis(delay)).await;
     }
 }
