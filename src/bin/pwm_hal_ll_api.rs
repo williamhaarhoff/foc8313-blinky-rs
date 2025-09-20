@@ -3,11 +3,14 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{AfType, Flex, Level, Output, OutputType, Speed};
-use embassy_stm32::pac::timer::regs::Ccr1ch;
+use embassy_stm32::pac::timer::{regs::Ccr1ch, vals::Mms};
 use embassy_stm32::time::{khz, Hertz};
 use embassy_stm32::timer::low_level::{OutputCompareMode, Timer as LLTimer};
 use embassy_stm32::timer::{Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerPin};
+use embassy_stm32::{
+    gpio::{AfType, Flex, Level, Output, OutputType, Speed},
+    interrupt, pac,
+};
 use embassy_stm32::{Config, Peri};
 use embassy_time::{Duration, Timer};
 use {defmt_rtt as _, panic_probe as _};
@@ -15,6 +18,18 @@ use {defmt_rtt as _, panic_probe as _};
 #[defmt::panic_handler]
 fn panic() -> ! {
     cortex_m::asm::udf()
+}
+
+#[interrupt]
+fn TIM3() {
+    unsafe {
+        let pin = embassy_stm32::peripherals::PC14::steal();
+        let mut pin = Flex::new(pin);
+        pin.set_as_output(Speed::Low);
+        pin.toggle();
+    }
+    pac::TIM3.sr().modify(|r| r.set_uif(false));
+    defmt::info!("interrupt! yay");
 }
 
 #[embassy_executor::main]
@@ -41,7 +56,7 @@ async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(config);
 
     let mut enable_pin = Output::new(p.PB1, Level::Low, Speed::Low);
-    let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
+    //let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
     enable_pin.set_high();
 
     let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, khz(16));
@@ -50,12 +65,16 @@ async fn main(_spawner: Spawner) {
     pwm_driver.enable(Channel::Ch3);
     let duty = pwm_driver.get_max_duty() / 4;
 
+    unsafe {
+        cortex_m::peripheral::NVIC::unmask(interrupt::TIM3);
+    }
+
     loop {
-        led.set_high();
+        //led.set_high();
         pwm_driver.set_duty(Channel::Ch1, duty);
         Timer::after(Duration::from_millis(500)).await;
 
-        led.set_low();
+        //led.set_low();
         pwm_driver.set_duty(Channel::Ch1, 0);
         Timer::after(Duration::from_millis(1000)).await;
     }
@@ -103,6 +122,19 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
                     .set_output_compare_mode(channel, OutputCompareMode::PwmMode1);
                 this.tim.set_output_compare_preload(channel, true);
             });
+
+        // configure Ch4 to generate interrupts on cc event
+        this.tim
+            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Frozen);
+        this.tim.set_output_compare_preload(Channel::Ch4, true);
+        this.tim.regs_gp16().dier().modify(|w| {
+            w.set_ccie(3, true);
+        });
+
+        // configure master mode, event generation
+        this.tim.regs_gp16().cr2().modify(|w| {
+            w.set_mms(Mms::COMPARE_OC4);
+        });
 
         this
     }
