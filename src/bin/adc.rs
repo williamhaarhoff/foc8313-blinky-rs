@@ -56,6 +56,26 @@ async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(config);
 
     let adc = pac::ADC1;
+    let rcc = pac::RCC;
+    rcc.apb2enr().modify(|w| w.set_adc1en(true));
+
+    adc.cr2().modify(|w| w.set_adon(true));
+
+    Timer::after(Duration::from_millis(100)).await;
+
+    // reset calibration
+    adc.cr2().modify(|w| w.set_rstcal(true));
+    while adc.cr2().read().rstcal() {
+        // spin
+    }
+
+    // calibrate
+    adc.cr2().modify(|w| w.set_cal(true));
+    while adc.cr2().read().cal() {
+        // spin
+    }
+    Timer::after(Duration::from_millis(100)).await;
+
     adc.cr1().modify(|w| w.set_scan(true));
     adc.cr2().modify(|w| w.set_cont(false));
     adc.cr1().modify(|w| w.set_discen(false));
@@ -67,10 +87,19 @@ async fn main(_spawner: Spawner) {
     adc.cr2().modify(|w| w.set_jextsel(0b100)); // TIM3 CC4 event
     adc.cr1().modify(|w| w.set_jauto(false));
 
+    Timer::after(Duration::from_millis(1000)).await;
+    defmt::info!("adc.cr2: {:?}", adc.cr2().read());
+    defmt::info!("adc.cr1: {:?}", adc.cr1().read());
+
     // configure injected channels
     adc.jsqr().modify(|w| w.set_jl(1)); // 2 conversions
-    adc.jsqr().modify(|w| w.set_jsq(2, 4)); // JSQ3[4:0] = ADC_CHANNEL_4
-    adc.jsqr().modify(|w| w.set_jsq(3, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jsq(0, 4)); // JSQ3[4:0] = ADC_CHANNEL_4
+    adc.jsqr().modify(|w| w.set_jsq(1, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+    Timer::after(Duration::from_millis(100)).await;
+
+    let raw = unsafe { core::ptr::read_volatile(&adc.jsqr() as *const _ as *const u32) };
+
+    defmt::info!("adc.jsqr: {=u32:#010x}", raw);
 
     let mut enable_pin = Output::new(p.PB1, Level::Low, Speed::Low);
     //let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
@@ -83,7 +112,7 @@ async fn main(_spawner: Spawner) {
     let duty = pwm_driver.get_max_duty() / 4;
 
     unsafe {
-        cortex_m::peripheral::NVIC::unmask(interrupt::TIM3);
+        //cortex_m::peripheral::NVIC::unmask(interrupt::TIM3);
     }
 
     loop {
