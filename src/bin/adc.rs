@@ -30,7 +30,7 @@ fn TIM3() {
         pin.toggle();
     }
     pac::TIM3.sr().modify(|r| r.set_uif(false));
-    defmt::info!("interrupt! yay");
+    defmt::info!("tim interrupt! yay");
 }
 
 #[interrupt]
@@ -100,8 +100,8 @@ async fn main(_spawner: Spawner) {
     // set number of conversions to ?
 
     adc.cr1().modify(|w| w.set_jdiscen(false));
-    //adc.cr2().modify(|w| w.set_jextsel(0b100)); // TIM3 CC4 event
-    adc.cr2().modify(|w| w.set_jextsel(0b111)); // JSWSTART
+    adc.cr2().modify(|w| w.set_jextsel(0b100)); // TIM3 CC4 event
+                                                //adc.cr2().modify(|w| w.set_jextsel(0b111)); // JSWSTART
     adc.cr1().modify(|w| w.set_jauto(false));
 
     Timer::after(Duration::from_millis(1000)).await;
@@ -109,13 +109,13 @@ async fn main(_spawner: Spawner) {
     defmt::info!("adc.cr1: {:?}", adc.cr1().read());
 
     // configure injected channels
-    adc.jsqr().modify(|w| w.set_jl(3)); // 2 conversions
+    adc.jsqr().modify(|w| w.set_jl(0)); // 1 conversions
     adc.jsqr().modify(|w| w.set_jsq(0, 5)); // JSQ3[4:0] = ADC_CHANNEL_4
     adc.jsqr().modify(|w| w.set_jsq(1, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
     adc.jsqr().modify(|w| w.set_jsq(2, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
     adc.jsqr().modify(|w| w.set_jsq(3, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
 
-    adc.smpr2().modify(|w| w.set_smp(5, SampleTime::CYCLES7_5));
+    adc.smpr2().modify(|w| w.set_smp(5, SampleTime::CYCLES1_5));
 
     defmt::info!("setting interrupt enable bits");
     adc.sr().modify(|w| w.set_eoc(false));
@@ -123,22 +123,24 @@ async fn main(_spawner: Spawner) {
     adc.cr1().modify(|w| w.set_jeocie(true));
     adc.cr1().modify(|w| w.set_eocie(true));
 
-    loop {
-        adc.cr2().modify(|w| w.set_jswstart(true));
-        Timer::after(Duration::from_millis(500)).await;
-    }
+    //loop {
+    //    adc.cr2().modify(|w| w.set_jswstart(true));
+    //    Timer::after(Duration::from_millis(500)).await;
+    //}
 
     Timer::after(Duration::from_millis(100)).await;
 
     let mut enable_pin = Output::new(p.PB1, Level::Low, Speed::Low);
-    enable_pin.set_high();
+    enable_pin.set_low();
 
-    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, khz(16));
+    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, hz(10));
     pwm_driver.enable(Channel::Ch1);
     pwm_driver.enable(Channel::Ch2);
     pwm_driver.enable(Channel::Ch3);
     pwm_driver.enable(Channel::Ch4);
     let duty = pwm_driver.get_max_duty() / 4;
+
+    pwm_driver.set_duty(Channel::Ch4, 10);
 
     unsafe {
         //cortex_m::peripheral::NVIC::unmask(interrupt::TIM3);
@@ -200,11 +202,11 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
 
         // configure Ch4 to generate interrupts on cc event
         this.tim
-            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Frozen);
+            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::PwmMode1);
         this.tim.set_output_compare_preload(Channel::Ch4, true);
-        //this.tim.regs_gp16().dier().modify(|w| {
-        //    w.set_ccie(3, true);
-        //});
+        this.tim.regs_gp16().dier().modify(|w| {
+            w.set_ccie(3, true);
+        });
 
         // configure master mode, event generation
         this.tim.regs_gp16().cr2().modify(|w| {
