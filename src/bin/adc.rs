@@ -3,8 +3,9 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_stm32::adc::SampleTime;
 use embassy_stm32::pac::timer::{regs::Ccr1ch, vals::Mms};
-use embassy_stm32::time::{khz, Hertz};
+use embassy_stm32::time::{hz, khz, Hertz};
 use embassy_stm32::timer::low_level::{OutputCompareMode, Timer as LLTimer};
 use embassy_stm32::timer::{Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerPin};
 use embassy_stm32::{
@@ -30,6 +31,15 @@ fn TIM3() {
     }
     pac::TIM3.sr().modify(|r| r.set_uif(false));
     defmt::info!("interrupt! yay");
+}
+
+#[interrupt]
+fn ADC1_2() {
+    defmt::info!("adc interrupt! yay");
+    pac::ADC1.sr().modify(|w| w.set_jeoc(false));
+    pac::ADC1.sr().modify(|w| w.set_eoc(false));
+    pac::ADC1.cr1().modify(|w| w.set_jeocie(true));
+    pac::ADC1.cr1().modify(|w| w.set_eocie(true));
 }
 
 #[embassy_executor::main]
@@ -76,15 +86,22 @@ async fn main(_spawner: Spawner) {
     }
     Timer::after(Duration::from_millis(100)).await;
 
+    unsafe {
+        cortex_m::peripheral::NVIC::unmask(interrupt::ADC1_2);
+    }
+
     adc.cr1().modify(|w| w.set_scan(true));
     adc.cr2().modify(|w| w.set_cont(false));
     adc.cr1().modify(|w| w.set_discen(false));
     adc.cr2().modify(|w| w.set_extsel(0b111)); // ADC SOFTWARE START
-    adc.cr2().modify(|w| w.set_align(true));
+    adc.cr2().modify(|w| w.set_align(false));
+    adc.cr2().modify(|w| w.set_exttrig(false));
+    adc.cr2().modify(|w| w.set_jexttrig(true));
     // set number of conversions to ?
 
     adc.cr1().modify(|w| w.set_jdiscen(false));
-    adc.cr2().modify(|w| w.set_jextsel(0b100)); // TIM3 CC4 event
+    //adc.cr2().modify(|w| w.set_jextsel(0b100)); // TIM3 CC4 event
+    adc.cr2().modify(|w| w.set_jextsel(0b111)); // JSWSTART
     adc.cr1().modify(|w| w.set_jauto(false));
 
     Timer::after(Duration::from_millis(1000)).await;
@@ -92,23 +109,35 @@ async fn main(_spawner: Spawner) {
     defmt::info!("adc.cr1: {:?}", adc.cr1().read());
 
     // configure injected channels
-    adc.jsqr().modify(|w| w.set_jl(1)); // 2 conversions
-    adc.jsqr().modify(|w| w.set_jsq(0, 4)); // JSQ3[4:0] = ADC_CHANNEL_4
+    adc.jsqr().modify(|w| w.set_jl(3)); // 2 conversions
+    adc.jsqr().modify(|w| w.set_jsq(0, 5)); // JSQ3[4:0] = ADC_CHANNEL_4
     adc.jsqr().modify(|w| w.set_jsq(1, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jsq(2, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jsq(3, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+
+    adc.smpr2().modify(|w| w.set_smp(5, SampleTime::CYCLES7_5));
+
+    defmt::info!("setting interrupt enable bits");
+    adc.sr().modify(|w| w.set_eoc(false));
+    adc.sr().modify(|w| w.set_jeoc(false));
+    adc.cr1().modify(|w| w.set_jeocie(true));
+    adc.cr1().modify(|w| w.set_eocie(true));
+
+    loop {
+        adc.cr2().modify(|w| w.set_jswstart(true));
+        Timer::after(Duration::from_millis(500)).await;
+    }
+
     Timer::after(Duration::from_millis(100)).await;
 
-    let raw = unsafe { core::ptr::read_volatile(&adc.jsqr() as *const _ as *const u32) };
-
-    defmt::info!("adc.jsqr: {=u32:#010x}", raw);
-
     let mut enable_pin = Output::new(p.PB1, Level::Low, Speed::Low);
-    //let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
     enable_pin.set_high();
 
     let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, khz(16));
     pwm_driver.enable(Channel::Ch1);
     pwm_driver.enable(Channel::Ch2);
     pwm_driver.enable(Channel::Ch3);
+    pwm_driver.enable(Channel::Ch4);
     let duty = pwm_driver.get_max_duty() / 4;
 
     unsafe {
@@ -173,9 +202,9 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
         this.tim
             .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Frozen);
         this.tim.set_output_compare_preload(Channel::Ch4, true);
-        this.tim.regs_gp16().dier().modify(|w| {
-            w.set_ccie(3, true);
-        });
+        //this.tim.regs_gp16().dier().modify(|w| {
+        //    w.set_ccie(3, true);
+        //});
 
         // configure master mode, event generation
         this.tim.regs_gp16().cr2().modify(|w| {
