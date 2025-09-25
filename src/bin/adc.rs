@@ -36,8 +36,20 @@ fn TIM3() {
 #[interrupt]
 fn ADC1_2() {
     defmt::info!("adc interrupt! yay");
+    defmt::info!("adc.sr {:?}", pac::ADC1.sr().read());
+    if pac::ADC1.sr().read().jeoc() {
+        defmt::info!("injected scan complete");
+        defmt::info!("jdr0: {:?}", pac::ADC1.jdr(0).read());
+        defmt::info!("jdr1: {:?}", pac::ADC1.jdr(1).read());
+        defmt::info!("jdr2: {:?}", pac::ADC1.jdr(2).read());
+        defmt::info!("jdr3: {:?}", pac::ADC1.jdr(3).read());
+        defmt::info!("adc.sr {:?}", pac::ADC1.sr().read());
+    }
+
     pac::ADC1.sr().modify(|w| w.set_jeoc(false));
     pac::ADC1.sr().modify(|w| w.set_eoc(false));
+    pac::ADC1.sr().modify(|w| w.set_jstrt(false));
+    pac::ADC1.sr().modify(|w| w.set_strt(false));
     pac::ADC1.cr1().modify(|w| w.set_jeocie(true));
     pac::ADC1.cr1().modify(|w| w.set_eocie(true));
 }
@@ -64,6 +76,11 @@ async fn main(_spawner: Spawner) {
         config.rcc.adc_pre = ADCPrescaler::DIV6;
     }
     let p = embassy_stm32::init(config);
+
+    let mut sense_a = Flex::new(p.PA5);
+    let mut sense_b = Flex::new(p.PA4);
+    sense_a.set_as_analog();
+    sense_b.set_as_analog();
 
     let adc = pac::ADC1;
     let rcc = pac::RCC;
@@ -109,13 +126,14 @@ async fn main(_spawner: Spawner) {
     defmt::info!("adc.cr1: {:?}", adc.cr1().read());
 
     // configure injected channels
-    adc.jsqr().modify(|w| w.set_jl(0)); // 1 conversions
-    adc.jsqr().modify(|w| w.set_jsq(0, 5)); // JSQ3[4:0] = ADC_CHANNEL_4
-    adc.jsqr().modify(|w| w.set_jsq(1, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
-    adc.jsqr().modify(|w| w.set_jsq(2, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jl(1)); // 2 conversions
+    adc.jsqr().modify(|w| w.set_jsq(0, 0)); // JSQ3[4:0] = ADC_CHANNEL_4
+    adc.jsqr().modify(|w| w.set_jsq(1, 0)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jsq(2, 4)); // JSQ4[4:0] = ADC_CHANNEL_5
     adc.jsqr().modify(|w| w.set_jsq(3, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
 
     adc.smpr2().modify(|w| w.set_smp(5, SampleTime::CYCLES1_5));
+    adc.smpr2().modify(|w| w.set_smp(4, SampleTime::CYCLES1_5));
 
     defmt::info!("setting interrupt enable bits");
     adc.sr().modify(|w| w.set_eoc(false));
@@ -131,29 +149,51 @@ async fn main(_spawner: Spawner) {
     Timer::after(Duration::from_millis(100)).await;
 
     let mut enable_pin = Output::new(p.PB1, Level::Low, Speed::Low);
-    enable_pin.set_low();
+    enable_pin.set_high();
 
-    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, hz(10));
+    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, hz(1000));
     pwm_driver.enable(Channel::Ch1);
     pwm_driver.enable(Channel::Ch2);
     pwm_driver.enable(Channel::Ch3);
     pwm_driver.enable(Channel::Ch4);
-    let duty = pwm_driver.get_max_duty() / 4;
+    let duty = pwm_driver.get_max_duty() / 2;
 
-    pwm_driver.set_duty(Channel::Ch4, 10);
+    pwm_driver.set_duty(Channel::Ch4, 0);
 
     unsafe {
         //cortex_m::peripheral::NVIC::unmask(interrupt::TIM3);
     }
 
     loop {
-        //led.set_high();
         pwm_driver.set_duty(Channel::Ch1, duty);
+        pwm_driver.set_duty(Channel::Ch2, 0);
+        pwm_driver.set_duty(Channel::Ch3, 0);
         Timer::after(Duration::from_millis(500)).await;
 
-        //led.set_low();
+        pwm_driver.set_duty(Channel::Ch1, duty);
+        pwm_driver.set_duty(Channel::Ch2, duty);
+        pwm_driver.set_duty(Channel::Ch3, 0);
+        Timer::after(Duration::from_millis(500)).await;
+
         pwm_driver.set_duty(Channel::Ch1, 0);
-        Timer::after(Duration::from_millis(1000)).await;
+        pwm_driver.set_duty(Channel::Ch2, duty);
+        pwm_driver.set_duty(Channel::Ch3, 0);
+        Timer::after(Duration::from_millis(500)).await;
+
+        pwm_driver.set_duty(Channel::Ch1, 0);
+        pwm_driver.set_duty(Channel::Ch2, duty);
+        pwm_driver.set_duty(Channel::Ch3, duty);
+        Timer::after(Duration::from_millis(500)).await;
+
+        pwm_driver.set_duty(Channel::Ch1, 0);
+        pwm_driver.set_duty(Channel::Ch2, 0);
+        pwm_driver.set_duty(Channel::Ch3, duty);
+        Timer::after(Duration::from_millis(500)).await;
+
+        pwm_driver.set_duty(Channel::Ch1, duty);
+        pwm_driver.set_duty(Channel::Ch2, 0);
+        pwm_driver.set_duty(Channel::Ch3, duty);
+        Timer::after(Duration::from_millis(500)).await;
     }
 }
 
@@ -202,7 +242,7 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
 
         // configure Ch4 to generate interrupts on cc event
         this.tim
-            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::PwmMode1);
+            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Toggle);
         this.tim.set_output_compare_preload(Channel::Ch4, true);
         this.tim.regs_gp16().dier().modify(|w| {
             w.set_ccie(3, true);
