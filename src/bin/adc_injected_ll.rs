@@ -77,9 +77,9 @@ async fn main(_spawner: Spawner) {
     }
     let p = embassy_stm32::init(config);
 
-    let mut sense_a = Flex::new(p.PA5);
+    let mut sense_c = Flex::new(p.PA3);
     let mut sense_b = Flex::new(p.PA4);
-    sense_a.set_as_analog();
+    sense_c.set_as_analog();
     sense_b.set_as_analog();
 
     let adc = pac::ADC1;
@@ -129,8 +129,8 @@ async fn main(_spawner: Spawner) {
     adc.jsqr().modify(|w| w.set_jl(1)); // 2 conversions
     adc.jsqr().modify(|w| w.set_jsq(0, 0)); // JSQ3[4:0] = ADC_CHANNEL_4
     adc.jsqr().modify(|w| w.set_jsq(1, 0)); // JSQ4[4:0] = ADC_CHANNEL_5
-    adc.jsqr().modify(|w| w.set_jsq(2, 4)); // JSQ4[4:0] = ADC_CHANNEL_5
-    adc.jsqr().modify(|w| w.set_jsq(3, 5)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jsq(2, 3)); // JSQ4[4:0] = ADC_CHANNEL_5
+    adc.jsqr().modify(|w| w.set_jsq(3, 4)); // JSQ4[4:0] = ADC_CHANNEL_5
 
     adc.smpr2().modify(|w| w.set_smp(5, SampleTime::CYCLES1_5));
     adc.smpr2().modify(|w| w.set_smp(4, SampleTime::CYCLES1_5));
@@ -151,12 +151,12 @@ async fn main(_spawner: Spawner) {
     let mut enable_pin = Output::new(p.PB1, Level::Low, Speed::Low);
     enable_pin.set_high();
 
-    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, hz(1000));
+    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, khz(16));
     pwm_driver.enable(Channel::Ch1);
     pwm_driver.enable(Channel::Ch2);
     pwm_driver.enable(Channel::Ch3);
     pwm_driver.enable(Channel::Ch4);
-    let duty = pwm_driver.get_max_duty() / 2;
+    let duty = pwm_driver.get_max_duty();
 
     pwm_driver.set_duty(Channel::Ch4, 0);
 
@@ -164,36 +164,48 @@ async fn main(_spawner: Spawner) {
         //cortex_m::peripheral::NVIC::unmask(interrupt::TIM3);
     }
 
+    //info!("a only");
+    //pwm_driver.set_duty(Channel::Ch1, duty);
+    //pwm_driver.set_duty(Channel::Ch2, 0);
+    //pwm_driver.set_duty(Channel::Ch3, 0);
+    //Timer::after(Duration::from_millis(500)).await;
+
+    //info!("ab only");
+    //pwm_driver.set_duty(Channel::Ch1, duty);
+    //pwm_driver.set_duty(Channel::Ch2, duty);
+    //pwm_driver.set_duty(Channel::Ch3, 0);
+    //Timer::after(Duration::from_millis(500)).await;
+
+    info!("b only");
+    pwm_driver.set_duty(Channel::Ch1, 0);
+    pwm_driver.set_duty(Channel::Ch2, duty - 1);
+    pwm_driver.set_duty(Channel::Ch3, 0);
+    Timer::after(Duration::from_millis(2)).await;
+
+    //info!("bc only");
+    //pwm_driver.set_duty(Channel::Ch1, 0);
+    //pwm_driver.set_duty(Channel::Ch2, duty);
+    //pwm_driver.set_duty(Channel::Ch3, duty);
+    //Timer::after(Duration::from_millis(500)).await;
+
+    info!("c only");
+    pwm_driver.set_duty(Channel::Ch1, 0);
+    pwm_driver.set_duty(Channel::Ch2, 0);
+    pwm_driver.set_duty(Channel::Ch3, duty - 1);
+    Timer::after(Duration::from_millis(2)).await;
+
+    //info!("ca only");
+    //pwm_driver.set_duty(Channel::Ch1, duty);
+    //pwm_driver.set_duty(Channel::Ch2, 0);
+    //pwm_driver.set_duty(Channel::Ch3, duty);
+    //Timer::after(Duration::from_millis(500)).await;
+    unsafe {
+        cortex_m::peripheral::NVIC::mask(interrupt::ADC1_2);
+    }
+    enable_pin.set_low();
+
     loop {
-        pwm_driver.set_duty(Channel::Ch1, duty);
-        pwm_driver.set_duty(Channel::Ch2, 0);
-        pwm_driver.set_duty(Channel::Ch3, 0);
-        Timer::after(Duration::from_millis(500)).await;
-
-        pwm_driver.set_duty(Channel::Ch1, duty);
-        pwm_driver.set_duty(Channel::Ch2, duty);
-        pwm_driver.set_duty(Channel::Ch3, 0);
-        Timer::after(Duration::from_millis(500)).await;
-
-        pwm_driver.set_duty(Channel::Ch1, 0);
-        pwm_driver.set_duty(Channel::Ch2, duty);
-        pwm_driver.set_duty(Channel::Ch3, 0);
-        Timer::after(Duration::from_millis(500)).await;
-
-        pwm_driver.set_duty(Channel::Ch1, 0);
-        pwm_driver.set_duty(Channel::Ch2, duty);
-        pwm_driver.set_duty(Channel::Ch3, duty);
-        Timer::after(Duration::from_millis(500)).await;
-
-        pwm_driver.set_duty(Channel::Ch1, 0);
-        pwm_driver.set_duty(Channel::Ch2, 0);
-        pwm_driver.set_duty(Channel::Ch3, duty);
-        Timer::after(Duration::from_millis(500)).await;
-
-        pwm_driver.set_duty(Channel::Ch1, duty);
-        pwm_driver.set_duty(Channel::Ch2, 0);
-        pwm_driver.set_duty(Channel::Ch3, duty);
-        Timer::after(Duration::from_millis(500)).await;
+        Timer::after_millis(1000).await;
     }
 }
 

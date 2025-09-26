@@ -42,6 +42,7 @@ async fn main(_spawner: Spawner) {
     let mut vc = adc.read(&mut sense_c).await;
     let mut vb = adc.read(&mut sense_b).await;
 
+    // 2044 -> 1646mV so a value of 2288 -> 1842mV, delta = +196mV, vsense = +3.92mV -> +0.65A
     info!("pre loop values!");
     info!(
         " a: {} b: {} {} {}mV c: {} {} {}mV",
