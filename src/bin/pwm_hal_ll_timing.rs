@@ -22,14 +22,14 @@ fn panic() -> ! {
 
 #[interrupt]
 fn TIM3() {
+    info!("interrupt");
     unsafe {
-        let pin = embassy_stm32::peripherals::PC14::steal();
+        let pin = embassy_stm32::peripherals::PB0::steal();
         let mut pin = Flex::new(pin);
         pin.set_as_output(Speed::Low);
         pin.toggle();
     }
-    pac::TIM3.sr().modify(|r| r.set_uif(false));
-    defmt::info!("interrupt! yay");
+    pac::TIM3.sr().write(|w| w.set_uif(false));
 }
 
 #[embassy_executor::main]
@@ -59,10 +59,12 @@ async fn main(_spawner: Spawner) {
     //let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
     enable_pin.set_high();
 
-    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, p.PB0, hz(16));
+    let mut pwm_driver = MyPwm::new(p.TIM3, p.PA6, p.PA7, hz(16));
     pwm_driver.enable(Channel::Ch1);
     pwm_driver.enable(Channel::Ch2);
     pwm_driver.enable(Channel::Ch3);
+    pwm_driver.set_duty(Channel::Ch4, 0);
+    pwm_driver.enable(Channel::Ch4);
     let duty = pwm_driver.get_max_duty() / 64;
 
     unsafe {
@@ -78,7 +80,6 @@ pub struct MyPwm<'d, T: GeneralInstance4Channel> {
     tim: LLTimer<'d, T>,
     _ph1: Flex<'d>,
     _ph2: Flex<'d>,
-    _ph3: Flex<'d>,
 }
 
 impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
@@ -86,36 +87,29 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
         tim: Peri<'d, T>,
         ch1: Peri<'d, impl TimerPin<T, Ch1>>,
         ch2: Peri<'d, impl TimerPin<T, Ch2>>,
-        ch3: Peri<'d, impl TimerPin<T, Ch3>>,
         freq: Hertz,
     ) -> Self {
         let af1 = ch1.af_num();
         let af2 = ch2.af_num();
-        let af3 = ch3.af_num();
         let mut ch1 = Flex::new(ch1);
         let mut ch2 = Flex::new(ch2);
-        let mut ch3 = Flex::new(ch3);
         ch1.set_as_af_unchecked(af1, AfType::output(OutputType::PushPull, Speed::VeryHigh));
         ch2.set_as_af_unchecked(af2, AfType::output(OutputType::PushPull, Speed::VeryHigh));
-        ch3.set_as_af_unchecked(af3, AfType::output(OutputType::PushPull, Speed::VeryHigh));
 
         let mut this = Self {
             tim: LLTimer::new(tim),
             _ph1: ch1,
             _ph2: ch2,
-            _ph3: ch3,
         };
 
         this.set_frequency(freq);
         this.tim.start();
 
-        [Channel::Ch1, Channel::Ch2, Channel::Ch3]
-            .iter()
-            .for_each(|&channel| {
-                this.tim
-                    .set_output_compare_mode(channel, OutputCompareMode::PwmMode1);
-                this.tim.set_output_compare_preload(channel, true);
-            });
+        [Channel::Ch1, Channel::Ch2].iter().for_each(|&channel| {
+            this.tim
+                .set_output_compare_mode(channel, OutputCompareMode::PwmMode1);
+            this.tim.set_output_compare_preload(channel, true);
+        });
 
         // configure Ch4 to generate interrupts on cc event
         this.tim
