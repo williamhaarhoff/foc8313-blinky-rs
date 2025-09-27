@@ -6,7 +6,7 @@ use embassy_executor::Spawner;
 use embassy_stm32::adc::SampleTime;
 use embassy_stm32::pac::timer::{regs::Ccr1ch, vals::Mms};
 use embassy_stm32::time::{hz, khz, Hertz};
-use embassy_stm32::timer::low_level::{OutputCompareMode, Timer as LLTimer};
+use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode, Timer as LLTimer};
 use embassy_stm32::timer::{Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerPin};
 use embassy_stm32::{
     gpio::{AfType, Flex, Level, Output, OutputType, Speed},
@@ -242,6 +242,8 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
         };
 
         this.set_frequency(freq);
+        this.tim
+            .set_counting_mode(CountingMode::CenterAlignedUpInterrupts);
         this.tim.start();
 
         [Channel::Ch1, Channel::Ch2, Channel::Ch3]

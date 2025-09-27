@@ -5,7 +5,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::pac::timer::{regs::Ccr1ch, vals::Mms};
 use embassy_stm32::time::{hz, khz, Hertz};
-use embassy_stm32::timer::low_level::{OutputCompareMode, Timer as LLTimer};
+use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode, Timer as LLTimer};
 use embassy_stm32::timer::{Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerPin};
 use embassy_stm32::{
     gpio::{AfType, Flex, Level, Output, OutputType, Speed},
@@ -28,7 +28,7 @@ fn TIM3() {
         pin.set_as_output(Speed::Low);
         pin.toggle();
     }
-    pac::TIM3.sr().modify(|r| r.set_uif(false));
+    pac::TIM3.sr().write(|w| w.set_uif(false));
     defmt::info!("interrupt! yay");
 }
 
@@ -107,8 +107,10 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
         };
 
         this.set_frequency(freq);
-        this.tim.start();
+        this.tim
+            .set_counting_mode(CountingMode::CenterAlignedUpInterrupts);
 
+        this.tim.start();
         [Channel::Ch1, Channel::Ch2, Channel::Ch3]
             .iter()
             .for_each(|&channel| {
@@ -119,7 +121,7 @@ impl<'d, T: GeneralInstance4Channel> MyPwm<'d, T> {
 
         // configure Ch4 to generate interrupts on cc event
         this.tim
-            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Frozen);
+            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Toggle);
         this.tim.set_output_compare_preload(Channel::Ch4, true);
         this.tim.regs_gp16().dier().modify(|w| {
             w.set_ccie(3, true);
