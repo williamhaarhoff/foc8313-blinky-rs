@@ -6,7 +6,6 @@ use defmt_rtt as _; // <- RTT logging
                     // use defmt_serial as _;
                     // use defmt_panic as _;
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::pac;
 use embassy_stm32::pac::gpio::vals;
 use embassy_time::{Duration, Timer};
@@ -20,7 +19,7 @@ fn panic() -> ! {
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     info!("🔌 Hello from Embassy STM32!");
-    let p = embassy_stm32::init(Default::default());
+    let _p = embassy_stm32::init(Default::default());
 
     let rcc = pac::RCC;
     let gpioc = pac::GPIOC;

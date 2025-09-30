@@ -5,14 +5,14 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::adc::SampleTime;
 use embassy_stm32::pac::timer::{regs::Ccr1ch, vals::Mms};
-use embassy_stm32::time::{hz, khz, Hertz};
+use embassy_stm32::time::{khz, Hertz};
 use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode, Timer as LLTimer};
-use embassy_stm32::timer::{Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerPin};
+use embassy_stm32::timer::{Ch1, Ch2, Ch3, Channel, GeneralInstance4Channel, TimerPin};
 use embassy_stm32::{
     gpio::{AfType, Flex, Level, Output, OutputType, Speed},
     interrupt, pac,
 };
-use embassy_stm32::{Config, Peri};
+use embassy_stm32::Peri;
 use embassy_time::{Duration, Timer};
 use {defmt_rtt as _, panic_probe as _};
 
