@@ -1,36 +1,4 @@
-[package]
-name = "foc8313-blinky"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["foc8313-blinky", "drivers"]
+resolver = "2"
 
-[dependencies]
-
-embassy-stm32 = { version = "0.4.0", features = ["defmt", "rt", "stm32f103cb", "time-driver-any", "exti", "unstable-pac", "memory-x"] }
-embassy-sync = { version = "0.7.2", features = ["defmt"]}
-embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
-embassy-time = { version = "0.5.0", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }
-embassy-futures = {version = "0.1.2"}
-
-rtic = { version = "2.2.0", features = ["thumbv7-backend"]}
-rtic-monotonics = { version = "2.1.0" , features = ["cortex-m-systick"]}
-rtic-sync = { version = "1.4.0" }
-
-cortex-m = { version = "0.7.6", features = ["critical-section-single-core", "inline-asm"] }
-cortex-m-rt = "0.7.5"
-embedded-hal = { version = "1.0.0"}
-
-static_cell = "2"
-#embassy-time-driver = { version = "0.1.0" }
-heapless = { version = "0.9.1", default-features = false }
-defmt = "1.0.1"
-defmt-rtt = "1.0.0"
-#defmt-panic = "1.0"
-panic-probe = { version = "1.0.0", features = ["print-defmt"] }
-
-[features]
-default = []
-
-[profile.dev]
-debug = true
-opt-level = 3 
-lto = true
