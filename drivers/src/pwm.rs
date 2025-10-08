@@ -6,7 +6,9 @@ use embassy_stm32::pac::timer::regs::Ccr1ch;
 pub use embassy_stm32::pac::timer::vals::Mms;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode, Timer as LLTimer};
-use embassy_stm32::timer::{Channel, GeneralInstance4Channel, TimerChannel, TimerPin};
+use embassy_stm32::timer::{
+    Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerChannel, TimerPin,
+};
 use embassy_stm32::Peri;
 
 #[derive(Clone, Copy)]
@@ -14,6 +16,71 @@ pub enum Phase {
     A,
     B,
     C,
+}
+
+pub struct SomeChannel<C>(core::marker::PhantomData<C>);
+pub struct NoChannel;
+
+pub trait MaybeChannel {}
+impl<C> MaybeChannel for SomeChannel<C> {}
+impl MaybeChannel for NoChannel {}
+
+// Output events
+pub trait TriggerOut {
+    const MODE: Mms;
+    type Channel;
+}
+
+struct Reset;
+struct Enable;
+struct Update;
+struct ComparePulse;
+struct CompareOC1;
+struct CompareOC2;
+struct CompareOC3;
+struct CompareOC4;
+impl TriggerOut for Reset {
+    const MODE: Mms = Mms::RESET;
+    type Channel = NoChannel;
+}
+impl TriggerOut for Enable {
+    const MODE: Mms = Mms::ENABLE;
+    type Channel = NoChannel;
+}
+impl TriggerOut for Update {
+    const MODE: Mms = Mms::UPDATE;
+    type Channel = NoChannel;
+}
+impl TriggerOut for ComparePulse {
+    const MODE: Mms = Mms::COMPARE_PULSE;
+    type Channel = NoChannel;
+}
+impl TriggerOut for CompareOC1 {
+    const MODE: Mms = Mms::COMPARE_OC1;
+    type Channel = SomeChannel<Ch1>;
+}
+impl TriggerOut for CompareOC2 {
+    const MODE: Mms = Mms::COMPARE_OC2;
+    type Channel = SomeChannel<Ch2>;
+}
+impl TriggerOut for CompareOC3 {
+    const MODE: Mms = Mms::COMPARE_OC3;
+    type Channel = SomeChannel<Ch3>;
+}
+impl TriggerOut for CompareOC4 {
+    const MODE: Mms = Mms::COMPARE_OC4;
+    type Channel = SomeChannel<Ch4>;
+}
+
+pub trait NotSame<T> {}
+impl<T, U> NotSame<U> for T {}
+impl<T> NotSame<T> for T {}
+
+pub trait ChannelNotConflictingWith<A, B, C> {}
+impl<A, B, C> ChannelNotConflictingWith<A, B, C> for NoChannel {}
+impl<Cx, A, B, C> ChannelNotConflictingWith<A, B, C> for SomeChannel<Cx> where
+    Cx: NotSame<A> + NotSame<B> + NotSame<C>
+{
 }
 
 pub struct Pwm3<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerChannel> {
@@ -29,15 +96,17 @@ pub struct Pwm3<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel
 impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerChannel>
     Pwm3<'d, T, A, B, C>
 {
-    pub fn new(
+    pub fn new<E>(
         tim: Peri<'d, T>,
         cha: Peri<'d, impl TimerPin<T, A>>,
         chb: Peri<'d, impl TimerPin<T, B>>,
         chc: Peri<'d, impl TimerPin<T, C>>,
-
+        _trg: E,
         freq: Hertz,
-        mms: Mms,
-    ) -> Self {
+    ) -> Self
+    where
+        E: TriggerOut + ChannelNotConflictingWith<A, B, C>,
+    {
         let afa = cha.af_num();
         let afb = chb.af_num();
         let afc = chc.af_num();
@@ -72,6 +141,7 @@ impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerC
             });
 
         // configure Ch4 to generate interrupts on cc event
+
         this.tim
             .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Toggle);
         this.tim.set_output_compare_preload(Channel::Ch4, true);
@@ -81,7 +151,7 @@ impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerC
 
         // configure master mode, event generation
         this.tim.regs_gp16().cr2().modify(|w| {
-            w.set_mms(mms);
+            w.set_mms(E::MODE);
         });
         this
     }
