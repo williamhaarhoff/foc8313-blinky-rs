@@ -18,17 +18,15 @@ pub enum Phase {
     C,
 }
 
-pub struct SomeChannel<C>(core::marker::PhantomData<C>);
-pub struct NoChannel;
-
-pub trait MaybeChannel {}
-impl<C> MaybeChannel for SomeChannel<C> {}
-impl MaybeChannel for NoChannel {}
+pub enum MaybeChannel {
+    Valid(Channel),
+    Invalid,
+}
 
 // Output events
 pub trait TriggerOut {
     const MODE: Mms;
-    type Channel;
+    const CHANNEL: MaybeChannel;
 }
 
 struct Reset;
@@ -41,46 +39,35 @@ struct CompareOC3;
 struct CompareOC4;
 impl TriggerOut for Reset {
     const MODE: Mms = Mms::RESET;
-    type Channel = NoChannel;
+    const CHANNEL: MaybeChannel = MaybeChannel::Invalid;
 }
 impl TriggerOut for Enable {
     const MODE: Mms = Mms::ENABLE;
-    type Channel = NoChannel;
+    const CHANNEL: MaybeChannel = MaybeChannel::Invalid;
 }
 impl TriggerOut for Update {
     const MODE: Mms = Mms::UPDATE;
-    type Channel = NoChannel;
+    const CHANNEL: MaybeChannel = MaybeChannel::Invalid;
 }
 impl TriggerOut for ComparePulse {
     const MODE: Mms = Mms::COMPARE_PULSE;
-    type Channel = NoChannel;
+    const CHANNEL: MaybeChannel = MaybeChannel::Invalid;
 }
 impl TriggerOut for CompareOC1 {
     const MODE: Mms = Mms::COMPARE_OC1;
-    type Channel = SomeChannel<Ch1>;
+    const CHANNEL: MaybeChannel = MaybeChannel::Valid(Channel::Ch1);
 }
 impl TriggerOut for CompareOC2 {
     const MODE: Mms = Mms::COMPARE_OC2;
-    type Channel = SomeChannel<Ch2>;
+    const CHANNEL: MaybeChannel = MaybeChannel::Valid(Channel::Ch2);
 }
 impl TriggerOut for CompareOC3 {
     const MODE: Mms = Mms::COMPARE_OC3;
-    type Channel = SomeChannel<Ch3>;
+    const CHANNEL: MaybeChannel = MaybeChannel::Valid(Channel::Ch3);
 }
 impl TriggerOut for CompareOC4 {
     const MODE: Mms = Mms::COMPARE_OC4;
-    type Channel = SomeChannel<Ch4>;
-}
-
-pub trait NotSame<T> {}
-impl<T, U> NotSame<U> for T {}
-impl<T> NotSame<T> for T {}
-
-pub trait ChannelNotConflictingWith<A, B, C> {}
-impl<A, B, C> ChannelNotConflictingWith<A, B, C> for NoChannel {}
-impl<Cx, A, B, C> ChannelNotConflictingWith<A, B, C> for SomeChannel<Cx> where
-    Cx: NotSame<A> + NotSame<B> + NotSame<C>
-{
+    const CHANNEL: MaybeChannel = MaybeChannel::Valid(Channel::Ch4);
 }
 
 pub struct Pwm3<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerChannel> {
@@ -105,7 +92,7 @@ impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerC
         freq: Hertz,
     ) -> Self
     where
-        E: TriggerOut + ChannelNotConflictingWith<A, B, C>,
+        E: TriggerOut,
     {
         let afa = cha.af_num();
         let afb = chb.af_num();
@@ -140,14 +127,18 @@ impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerC
                 this.tim.set_output_compare_preload(channel, true);
             });
 
-        // configure Ch4 to generate interrupts on cc event
-
-        this.tim
-            .set_output_compare_mode(Channel::Ch4, OutputCompareMode::Toggle);
-        this.tim.set_output_compare_preload(Channel::Ch4, true);
-        this.tim.regs_gp16().dier().modify(|w| {
-            w.set_ccie(3, true);
-        });
+        // configure trigger out that is also a timer channel to generate interrupts on cc event
+        match E::CHANNEL {
+            MaybeChannel::Valid(chx) => {
+                this.tim
+                    .set_output_compare_mode(chx, OutputCompareMode::Toggle);
+                this.tim.set_output_compare_preload(chx, true);
+            }
+            MaybeChannel::Invalid => {}
+        }
+        //this.tim.regs_gp16().dier().modify(|w| {
+        //    w.set_ccie(3, true);
+        //});
 
         // configure master mode, event generation
         this.tim.regs_gp16().cr2().modify(|w| {
