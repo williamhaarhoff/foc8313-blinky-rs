@@ -29,14 +29,14 @@ pub trait TriggerOut {
     const CHANNEL: MaybeChannel;
 }
 
-struct Reset;
-struct Enable;
-struct Update;
-struct ComparePulse;
-struct CompareOC1;
-struct CompareOC2;
-struct CompareOC3;
-struct CompareOC4;
+pub struct Reset;
+pub struct Enable;
+pub struct Update;
+pub struct ComparePulse;
+pub struct CompareOC1;
+pub struct CompareOC2;
+pub struct CompareOC3;
+pub struct CompareOC4;
 impl TriggerOut for Reset {
     const MODE: Mms = Mms::RESET;
     const CHANNEL: MaybeChannel = MaybeChannel::Invalid;
