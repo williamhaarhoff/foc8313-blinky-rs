@@ -1,14 +1,10 @@
 use core::marker::PhantomData;
-#[allow(unused_imports)]
-use defmt::*;
-use embassy_stm32::gpio::{AfType, Flex, Level, Output, OutputType, Speed};
+use embassy_stm32::gpio::{AfType, Flex, OutputType, Speed};
 use embassy_stm32::pac::timer::regs::Ccr1ch;
 pub use embassy_stm32::pac::timer::vals::Mms;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode, Timer as LLTimer};
-use embassy_stm32::timer::{
-    Ch1, Ch2, Ch3, Ch4, Channel, GeneralInstance4Channel, TimerChannel, TimerPin,
-};
+use embassy_stm32::timer::{Channel, GeneralInstance4Channel, TimerChannel, TimerPin};
 use embassy_stm32::Peri;
 
 #[derive(Clone, Copy)]
@@ -128,6 +124,7 @@ impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerC
             });
 
         // configure trigger out that is also a timer channel to generate interrupts on cc event
+        // todo - prevent trigger out on timer channel conflicting with channel used by phase
         match E::CHANNEL {
             MaybeChannel::Valid(chx) => {
                 this.tim
@@ -136,6 +133,8 @@ impl<'d, T: GeneralInstance4Channel, A: TimerChannel, B: TimerChannel, C: TimerC
             }
             MaybeChannel::Invalid => {}
         }
+
+        // todo - allow timer interrupts?
         //this.tim.regs_gp16().dier().modify(|w| {
         //    w.set_ccie(3, true);
         //});
