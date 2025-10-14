@@ -1,13 +1,14 @@
 use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::task::Poll;
-use embassy_stm32::adc::AdcChannel;
+use embassy_stm32::adc::{AdcChannel, AnyAdcChannel};
+use embassy_stm32::gpio::Pin;
 use embassy_stm32::gpio::{AfType, Flex, OutputType, Speed};
-use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::typelevel::Interrupt;
 use embassy_stm32::peripherals::ADC1;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::{adc::SampleTime, rcc, Peri};
+use embassy_stm32::{adc::SampleTime, pac, rcc, Peri};
+use embassy_stm32::{interrupt, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
 #[allow(unused)]
@@ -41,6 +42,7 @@ pub trait Instance: embassy_stm32::PeripheralType + embassy_stm32::rcc::RccPerip
 pub struct Isense<'d, T: Instance> {
     #[allow(unused)]
     adc: Peri<'d, T>,
+    cha: AnyAdcChannel<T>,
     #[allow(unused)]
     sample_time: SampleTime,
 }
@@ -51,12 +53,16 @@ pub struct InterruptHandler<T: Instance> {
 
 impl<T: Instance> interrupt::typelevel::Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
-        T::state().waker.wake();
+        defmt::info!("adc interrupt!");
+        if T::regs().sr().read().jeoc() {
+            T::regs().cr1().modify(|w| w.set_jeocie(false));
+            T::state().waker.wake();
+        }
     }
 }
 
 impl<'d, T: Instance> Isense<'d, T> {
-    pub fn new(adc: Peri<'d, T>) -> Self {
+    pub fn new(adc: Peri<'d, T>, cha: impl AdcChannel<T>) -> Self {
         rcc::enable_and_reset::<T>();
         T::regs().cr2().modify(|reg| reg.set_adon(true));
 
@@ -77,7 +83,37 @@ impl<'d, T: Instance> Isense<'d, T> {
         }
 
         // One cycle after calibration
-        blocking_delay_us((1_000_000 * 1) / Self::freq().0 + 1);
+        blocking_delay_us(1_000_000 / Self::freq().0 + 1);
+
+        let cha = cha.degrade_adc();
+
+        // set up scanning injected mode
+        T::regs().cr1().modify(|w| w.set_scan(true));
+        T::regs().cr2().modify(|w| w.set_cont(false));
+        T::regs().cr1().modify(|w| w.set_discen(false));
+        T::regs().cr2().modify(|w| w.set_extsel(0b111)); // ADC SOFTWARE START
+        T::regs().cr2().modify(|w| w.set_align(false));
+        T::regs().cr2().modify(|w| w.set_exttrig(false));
+        T::regs().cr2().modify(|w| w.set_jexttrig(true));
+
+        T::regs().cr1().modify(|w| w.set_jdiscen(false));
+        //T::regs().cr2().modify(|w| w.set_jextsel(0b100)); // TIM3 CC4 event
+        T::regs().cr2().modify(|w| w.set_jextsel(0b111)); // JSWSTART
+        T::regs().cr1().modify(|w| w.set_jauto(false));
+
+        // configure injected channels
+        T::regs().jsqr().modify(|w| w.set_jl(1)); // 2 conversions
+        T::regs().jsqr().modify(|w| w.set_jsq(0, 0)); // JSQ3[4:0] = ADC_CHANNEL_4
+        T::regs().jsqr().modify(|w| w.set_jsq(1, 0)); // JSQ4[4:0] = ADC_CHANNEL_5
+        T::regs().jsqr().modify(|w| w.set_jsq(2, 3)); // JSQ4[4:0] = ADC_CHANNEL_5
+        T::regs().jsqr().modify(|w| w.set_jsq(3, 4)); // JSQ4[4:0] = ADC_CHANNEL_5
+
+        T::regs()
+            .smpr2()
+            .modify(|w| w.set_smp(5, SampleTime::CYCLES1_5));
+        T::regs()
+            .smpr2()
+            .modify(|w| w.set_smp(4, SampleTime::CYCLES1_5));
 
         T::Interrupt::unpend();
         unsafe { T::Interrupt::enable() };
@@ -85,6 +121,7 @@ impl<'d, T: Instance> Isense<'d, T> {
         Self {
             adc,
             sample_time: SampleTime::from_bits(0),
+            cha,
         }
     }
 
@@ -124,25 +161,33 @@ impl<'d, T: Instance> Isense<'d, T> {
     }
 
     /// Perform a single conversion.
-    async fn convert(&mut self) -> u16 {
+    pub async fn convert(&mut self) -> u16 {
         T::regs().cr2().modify(|reg| {
             reg.set_adon(true);
-            reg.set_swstart(true);
+            reg.set_jswstart(true);
         });
         T::regs().cr1().modify(|w| w.set_eocie(true));
+        T::regs().cr1().modify(|w| w.set_jeocie(true));
 
         poll_fn(|cx| {
             T::state().waker.register(cx.waker());
 
-            if !T::regs().cr2().read().swstart() && T::regs().sr().read().eoc() {
+            if T::regs().sr().read().jeoc() {
+                defmt::info!("polling!");
                 Poll::Ready(())
             } else {
+                defmt::info!("pending");
                 Poll::Pending
             }
         })
         .await;
 
-        T::regs().dr().read().0 as u16
+        T::regs().sr().modify(|w| w.set_jeoc(false));
+        T::regs().sr().modify(|w| w.set_eoc(false));
+        T::regs().sr().modify(|w| w.set_jstrt(false));
+        T::regs().sr().modify(|w| w.set_strt(false));
+
+        T::regs().jdr(0).read().0 as u16
     }
 
     // pub async fn read(&mut self, channel: &mut impl AdcChannel<T>) -> u16 {
@@ -168,7 +213,6 @@ impl<'d, T: Instance> Isense<'d, T> {
     // }
 
     fn set_channel_sample_time(ch: u8, sample_time: SampleTime) {
-        let sample_time = sample_time.into();
         if ch <= 9 {
             T::regs()
                 .smpr2()

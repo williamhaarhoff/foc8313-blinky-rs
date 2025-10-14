@@ -4,6 +4,8 @@ use defmt::*;
 use drivers::isense::Isense;
 use drivers::pwm::{CompareOC4, Phase, Pwm3};
 use embassy_executor::Spawner;
+use embassy_stm32::bind_interrupts;
+use embassy_stm32::peripherals::ADC1;
 use embassy_stm32::time::{hz, khz, Hertz};
 use embassy_stm32::{
     gpio::{Level, Output, Speed},
@@ -11,6 +13,10 @@ use embassy_stm32::{
 };
 use embassy_time::Timer;
 use {defmt_rtt as _, panic_probe as _};
+
+bind_interrupts!(struct Irqs {
+    ADC1_2 => drivers::isense::InterruptHandler<ADC1>;
+});
 
 #[defmt::panic_handler]
 fn panic() -> ! {
@@ -44,7 +50,7 @@ async fn main(_spawner: Spawner) {
     //let mut led = Output::new(p.PC14, Level::Low, Speed::Low);
     enable_pin.set_high();
 
-    let mut isense_driver = Isense::new(p.ADC1);
+    let mut isense_driver = Isense::new(p.ADC1, p.PA3);
 
     let mut pwm_driver = Pwm3::new(p.TIM3, p.PA6, p.PA7, p.PB0, CompareOC4, khz(16));
     pwm_driver.enable(Phase::A);
@@ -71,6 +77,8 @@ async fn main(_spawner: Spawner) {
             pwm_driver.set_duty(Phase::A, *a);
             pwm_driver.set_duty(Phase::B, *b);
             pwm_driver.set_duty(Phase::C, *c);
+            let result = isense_driver.convert().await;
+            info!("measured: {:?}", result);
             Timer::after_millis(50).await;
         }
     }
