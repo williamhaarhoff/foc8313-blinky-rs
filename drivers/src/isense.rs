@@ -54,10 +54,30 @@ pub struct InterruptHandler<T: Instance> {
 impl<T: Instance> interrupt::typelevel::Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         defmt::info!("adc interrupt!");
+
+        defmt::info!("adc.sr {:?}", T::regs().sr().read());
         if T::regs().sr().read().jeoc() {
-            T::regs().cr1().modify(|w| w.set_jeocie(false));
+            defmt::info!("injected scan complete");
+            //T::regs().cr1().modify(|w| w.set_jeocie(false));
+            //T::regs().cr1().modify(|w| w.set_eocie(false));
+            T::regs().sr().modify(|w| w.set_jeoc(false));
+            T::regs().sr().modify(|w| w.set_eoc(false));
+
+            defmt::info!("waking future!");
             T::state().waker.wake();
         }
+
+        //pac::ADC1.sr().modify(|w| w.set_jeoc(false));
+        //pac::ADC1.sr().modify(|w| w.set_eoc(false));
+        //pac::ADC1.sr().modify(|w| w.set_jstrt(false));
+        //pac::ADC1.sr().modify(|w| w.set_strt(false));
+        //pac::ADC1.cr1().modify(|w| w.set_jeocie(true));
+        //pac::ADC1.cr1().modify(|w| w.set_eocie(true));
+
+        //if T::regs().sr().read().jeoc() {
+        //    T::regs().cr1().modify(|w| w.set_jeocie(false));
+        //    T::state().waker.wake();
+        //}
     }
 }
 
@@ -162,6 +182,7 @@ impl<'d, T: Instance> Isense<'d, T> {
 
     /// Perform a single conversion.
     pub async fn convert(&mut self) -> u16 {
+        defmt::info!("starting conversion");
         T::regs().cr2().modify(|reg| {
             reg.set_adon(true);
             reg.set_jswstart(true);
@@ -171,14 +192,8 @@ impl<'d, T: Instance> Isense<'d, T> {
 
         poll_fn(|cx| {
             T::state().waker.register(cx.waker());
-
-            if T::regs().sr().read().jeoc() {
-                defmt::info!("polling!");
-                Poll::Ready(())
-            } else {
-                defmt::info!("pending");
-                Poll::Pending
-            }
+            defmt::info!("running poll fn!");
+            Poll::Ready(())
         })
         .await;
 
@@ -186,8 +201,16 @@ impl<'d, T: Instance> Isense<'d, T> {
         T::regs().sr().modify(|w| w.set_eoc(false));
         T::regs().sr().modify(|w| w.set_jstrt(false));
         T::regs().sr().modify(|w| w.set_strt(false));
+        T::regs().cr1().modify(|w| w.set_eocie(false));
+        T::regs().cr1().modify(|w| w.set_jeocie(false));
 
-        T::regs().jdr(0).read().0 as u16
+        let result = T::regs().jdr(0).read().0 as u16;
+        defmt::info!("jdr0: {:?}", result);
+        defmt::info!("jdr1: {:?}", pac::ADC1.jdr(1).read());
+        defmt::info!("jdr2: {:?}", pac::ADC1.jdr(2).read());
+        defmt::info!("jdr3: {:?}", pac::ADC1.jdr(3).read());
+        defmt::info!("adc.sr {:?}", pac::ADC1.sr().read());
+        result
     }
 
     // pub async fn read(&mut self, channel: &mut impl AdcChannel<T>) -> u16 {

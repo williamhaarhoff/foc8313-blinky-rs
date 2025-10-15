@@ -74,12 +74,12 @@ async fn main(_spawner: Spawner) {
 
     loop {
         for (a, b, c) in sequence.iter() {
-            pwm_driver.set_duty(Phase::A, *a);
-            pwm_driver.set_duty(Phase::B, *b);
-            pwm_driver.set_duty(Phase::C, *c);
+            //pwm_driver.set_duty(Phase::A, *a);
+            //pwm_driver.set_duty(Phase::B, *b);
+            //pwm_driver.set_duty(Phase::C, *c);
             let result = isense_driver.convert().await;
-            info!("measured: {:?}", result);
-            Timer::after_millis(50).await;
+            info!("measured: {:?}\n\n", result);
+            //Timer::after_millis(50).await;
         }
     }
 }
